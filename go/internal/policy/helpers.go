@@ -475,6 +475,10 @@ func hasDirectPushToProtectedBranch(command string, extraBranches []string) bool
 	}
 
 	for _, arg := range args {
+		// Strip a leading '+' (force-push refspec modifier, e.g. "git push
+		// origin +main"). The '+' is a refspec qualifier, not part of the
+		// branch name, so matching must ignore it.
+		arg = strings.TrimPrefix(arg, "+")
 		normalized := normalizeGitToken(arg)
 		if matchesProtectedBranchRef(normalized, extraBranches) {
 			return true

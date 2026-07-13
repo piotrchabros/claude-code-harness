@@ -356,7 +356,7 @@ runtimefloor secret-read の許可宣言（`runtimefloor.secretAllow` / 環境�
 
 R03 の target extraction は redirection / `tee` ベース。`sed -i` 等の in-place 書き込み検出は v1 範囲外。
 
-テスト ID: `TestR01_*` 〜 `TestR13_*` (go/internal/guard/rules_test.go)
+テスト ID: `TestR01_*` 〜 `TestR16_*` (go/internal/guard/rules_test.go)
 
 ---
 

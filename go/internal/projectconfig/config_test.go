@@ -91,6 +91,38 @@ func TestLoadMalformedSetsParseErr(t *testing.T) {
 	}
 }
 
+func TestLoadUnknownKeySetsParseErr(t *testing.T) {
+	dir := t.TempDir()
+	// A typo like "protectedd" must fail closed rather than silently dropping
+	// the security-relevant paths.protected declaration.
+	writeConfig(t, dir, ".claude-code-harness.config.json",
+		`{"paths": {"protectedd": ["infra/"]}}`)
+	res := Load(dir)
+	if !res.Found {
+		t.Fatal("expected Found=true for present file")
+	}
+	if res.ParseErr == nil {
+		t.Fatal("expected ParseErr for unknown config key")
+	}
+	if res.Config != nil {
+		t.Error("expected nil Config on unknown-key error (fail closed)")
+	}
+}
+
+func TestLoadTrailingContentSetsParseErr(t *testing.T) {
+	dir := t.TempDir()
+	// Extra JSON after the first object must be rejected.
+	writeConfig(t, dir, ".claude-code-harness.config.json",
+		`{"paths": {"protected": ["infra/"]}} {"extra": true}`)
+	res := Load(dir)
+	if res.ParseErr == nil {
+		t.Fatal("expected ParseErr for trailing JSON content")
+	}
+	if res.Config != nil {
+		t.Error("expected nil Config on trailing-content error (fail closed)")
+	}
+}
+
 func TestLoadFullConfig(t *testing.T) {
 	dir := t.TempDir()
 	body := `{

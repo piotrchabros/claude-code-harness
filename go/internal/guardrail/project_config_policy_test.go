@@ -90,6 +90,65 @@ func TestEvaluatePreTool_ConfiguredProtectedBranchPushAsked(t *testing.T) {
 	if result.Decision != hookproto.DecisionAsk {
 		t.Fatalf("expected ask for configured protected branch push, got %s (%s)", result.Decision, result.Reason)
 	}
+	if !strings.Contains(result.Reason, "protected") {
+		t.Fatalf("reason should mention the protected branch, got %q", result.Reason)
+	}
+}
+
+func TestEvaluatePreTool_ConfiguredProtectedBranchForcePushShorthand(t *testing.T) {
+	projectRoot := t.TempDir()
+	writeProjectConfig(t, projectRoot, ".claude-code-harness.config.json",
+		`{"git": {"protected_branches": ["production"]}}`)
+
+	// The "+branch" shorthand is a force-push; the '+' is a refspec modifier,
+	// not part of the branch name, and must not bypass the protected-branch guard.
+	for _, cmd := range []string{"git push origin +production", "git push origin +main"} {
+		result := EvaluatePreTool(hookproto.HookInput{
+			CWD:       projectRoot,
+			ToolName:  "Bash",
+			ToolInput: map[string]interface{}{"command": cmd},
+		})
+		if result.Decision == hookproto.DecisionApprove {
+			t.Fatalf("expected guardrail for force-push shorthand %q, got approve", cmd)
+		}
+	}
+}
+
+func TestEvaluatePreTool_DeniesConfiguredProtectedPathEditAndMultiEdit(t *testing.T) {
+	projectRoot := t.TempDir()
+	writeProjectConfig(t, projectRoot, ".claude-code-harness.config.json",
+		`{"paths": {"protected": ["infra/"]}}`)
+
+	for _, tool := range []string{"Edit", "MultiEdit"} {
+		result := EvaluatePreTool(hookproto.HookInput{
+			CWD:      projectRoot,
+			ToolName: tool,
+			ToolInput: map[string]interface{}{
+				"file_path": filepath.Join(projectRoot, "infra", "main.tf"),
+			},
+		})
+		if result.Decision != hookproto.DecisionDeny {
+			t.Fatalf("expected deny for %s to protected path, got %s (%s)", tool, result.Decision, result.Reason)
+		}
+	}
+}
+
+func TestEvaluatePreTool_ConfiguredProtectedBranchResetGuarded(t *testing.T) {
+	projectRoot := t.TempDir()
+	writeProjectConfig(t, projectRoot, ".claude-code-harness.config.json",
+		`{"git": {"protected_branches": ["production"]}}`)
+
+	result := EvaluatePreTool(hookproto.HookInput{
+		CWD:      projectRoot,
+		ToolName: "Bash",
+		ToolInput: map[string]interface{}{
+			"command": "git reset --hard origin/production",
+		},
+	})
+
+	if result.Decision == hookproto.DecisionApprove {
+		t.Fatalf("expected guardrail for reset --hard to protected branch, got approve (%s)", result.Reason)
+	}
 }
 
 func TestEvaluatePreTool_MalformedConfigDoesNotAddDenies(t *testing.T) {

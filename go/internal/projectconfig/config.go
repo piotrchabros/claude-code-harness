@@ -21,7 +21,10 @@
 package projectconfig
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,6 +43,12 @@ var ConfigFileNames = []string{
 // section is represented so the file is fully parsed; sections that are not yet
 // enforced by a hook are still available to consumers via this struct.
 type Config struct {
+	// Schema and Comment are documentation escape hatches used by the shipped
+	// example ($schema pointer and free-text "comment" notes). They are accepted
+	// so a schema-valid file loads, while genuine typos (e.g. "protectedd")
+	// still surface as unknown-field parse errors under DisallowUnknownFields.
+	Schema              string                    `json:"$schema"`
+	Comment             string                    `json:"comment"`
 	Version             string                    `json:"version"`
 	Safety              SafetyConfig              `json:"safety"`
 	Git                 GitConfig                 `json:"git"`
@@ -61,6 +70,7 @@ type SafetyConfig struct {
 	Mode                string `json:"mode"`
 	RequireConfirmation *bool  `json:"require_confirmation"`
 	MaxAutoRetries      *int   `json:"max_auto_retries"`
+	Comment             string `json:"comment"`
 }
 
 // GitConfig maps the "git" section. ProtectedBranches is enforced by the
@@ -70,6 +80,7 @@ type GitConfig struct {
 	AllowAutoPush     *bool    `json:"allow_auto_push"`
 	ProtectedBranches []string `json:"protected_branches"`
 	CommitPrefix      string   `json:"commit_prefix"`
+	Comment           string   `json:"comment"`
 }
 
 // PathsConfig maps the "paths" section. Protected is enforced by the guardrail
@@ -79,6 +90,7 @@ type PathsConfig struct {
 	Protected     []string `json:"protected"`
 	PlansFile     string   `json:"plans_file"`
 	AgentsFile    string   `json:"agents_file"`
+	Comment       string   `json:"comment"`
 }
 
 // CIConfig maps the "ci" section (advisory).
@@ -86,6 +98,7 @@ type CIConfig struct {
 	Provider      string `json:"provider"`
 	EnableAutoFix *bool  `json:"enable_auto_fix"`
 	RequireGhCLI  *bool  `json:"require_gh_cli"`
+	Comment       string `json:"comment"`
 }
 
 // ScaffoldingConfig maps the "scaffolding" section (advisory).
@@ -94,31 +107,36 @@ type ScaffoldingConfig struct {
 	BaseStack      string            `json:"base_stack"`
 	AllowWebSearch *bool             `json:"allow_web_search"`
 	Templates      map[string]string `json:"templates"`
+	Comment        string            `json:"comment"`
 }
 
 // DestructiveCommandsConfig maps the "destructive_commands" section (advisory).
 type DestructiveCommandsConfig struct {
-	AllowRmRf        *bool `json:"allow_rm_rf"`
-	AllowNpmInstall  *bool `json:"allow_npm_install"`
-	RequireSizeCheck *bool `json:"require_size_check"`
-	MaxFilesToModify *int  `json:"max_files_to_modify"`
+	AllowRmRf        *bool  `json:"allow_rm_rf"`
+	AllowNpmInstall  *bool  `json:"allow_npm_install"`
+	RequireSizeCheck *bool  `json:"require_size_check"`
+	MaxFilesToModify *int   `json:"max_files_to_modify"`
+	Comment          string `json:"comment"`
 }
 
 // I18nConfig maps the "i18n" section. The canonical language source remains the
 // YAML config; this mirror keeps the JSON schema complete.
 type I18nConfig struct {
 	Language string `json:"language"`
+	Comment  string `json:"comment"`
 }
 
 // ConstitutionConfig maps the "constitution" section (consumed by skills).
 type ConstitutionConfig struct {
-	Path string `json:"path"`
+	Path    string `json:"path"`
+	Comment string `json:"comment"`
 }
 
 // RuntimeFloorConfig maps the "runtimefloor" section. SecretAllow is consumed by
 // the runtime action hard floor.
 type RuntimeFloorConfig struct {
 	SecretAllow []string `json:"secretAllow"`
+	Comment     string   `json:"comment"`
 }
 
 // OrchestrationConfig maps the "orchestration" section (advisory).
@@ -126,12 +144,14 @@ type OrchestrationConfig struct {
 	StateMachineVersion string `json:"state_machine_version"`
 	MaxStateRetries     *int   `json:"max_state_retries"`
 	RetryBackoffSeconds *int   `json:"retry_backoff_seconds"`
+	Comment             string `json:"comment"`
 }
 
 // WorkConfig maps the "work" section (consumed by the /work skill).
 type WorkConfig struct {
-	AutoCommit        *bool `json:"auto_commit"`
-	CommitOnPmApprove *bool `json:"commit_on_pm_approve"`
+	AutoCommit        *bool  `json:"auto_commit"`
+	CommitOnPmApprove *bool  `json:"commit_on_pm_approve"`
+	Comment           string `json:"comment"`
 }
 
 // SessionConfig maps the "session" section (advisory).
@@ -140,6 +160,7 @@ type SessionConfig struct {
 	EventLogPath string `json:"event_log_path"`
 	ResumePolicy string `json:"resume_policy"`
 	ForkPolicy   string `json:"fork_policy"`
+	Comment      string `json:"comment"`
 }
 
 // LoadResult is the outcome of loading the project config.
@@ -205,7 +226,20 @@ func Load(startDir string) LoadResult {
 		return LoadResult{ProjectRoot: projectRoot, Path: path, Found: true, ParseErr: err}
 	}
 	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	// Reject unknown keys so that a typo like "protectedd" surfaces as a parse
+	// error (fail closed) instead of silently dropping a security-relevant
+	// declaration such as paths.protected.
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&cfg); err != nil {
+		return LoadResult{ProjectRoot: projectRoot, Path: path, Found: true, ParseErr: err}
+	}
+	// Reject trailing content after the first JSON value so a malformed file
+	// with extra data is not partially accepted.
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			err = errors.New("unexpected trailing content after JSON object")
+		}
 		return LoadResult{ProjectRoot: projectRoot, Path: path, Found: true, ParseErr: err}
 	}
 	return LoadResult{Config: &cfg, ProjectRoot: projectRoot, Path: path, Found: true}

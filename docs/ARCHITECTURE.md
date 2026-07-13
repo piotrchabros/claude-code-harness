@@ -61,7 +61,7 @@ claude-code-harness/
 `claude-code-harness.config.schema.json` で定義されるプロジェクト設定ファイル `.claude-code-harness.config.json`（schema/example はドット無し、実ファイルはドット付きが正準。両名を解決する）により、一部の設定は PreToolUse ガードレールで**実際に強制**されます。
 
 強制される（enforced）セクション:
-- `paths.protected` — 宣言したパスへの Write/Edit/MultiEdit を deny（R16）
+- `paths.protected` — 宣言したパスへの Write/Edit/MultiEdit を deny（R16。directory prefix と glob の両対応。glob は `filepath.Match` ベースで再帰的な `**` は非対応 = `*` は `/` を跨がないため `config/**.yaml` のような宣言は再帰マッチしない。サブツリー保護には `config/` のような directory prefix を使う。不正な glob は fail-closed で deny）
 - `git.protected_branches` — protected branch 判定（R11 reset --hard / R12 direct push）に branch 名を追加
 - `runtimefloor.secretAllow` — secret-read hard floor の許可宣言（相対宣言は worktree root 配下として解決され、`cat .env` のような素の相対読み取りにも一致）
 - `destructive_commands.allow_rm_rf` — `true` で R05 の `rm -rf` 確認を抑止（既定 false、opt-in）。worktree 外の削除は runtimefloor のハード floor で引き続き停止

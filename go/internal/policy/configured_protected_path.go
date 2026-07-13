@@ -35,6 +35,15 @@ func configuredProtectedPathResult(ctx hookproto.RuleContext, filePath string) *
 // it is a path prefix of the target (directory or exact file) OR when it is a
 // glob that matches the full project-relative path or its basename (so
 // declarations like ".env.*" behave as documented).
+//
+// Glob matching uses filepath.Match, which does NOT support recursive
+// doublestar (**) patterns: "*" never crosses a "/" separator, so a declaration
+// such as "config/**.yaml" will not match "config/sub/app.yaml". Use a
+// directory prefix (e.g. "config/") for recursive protection instead.
+//
+// A malformed glob (e.g. "[") is treated as a match (fail closed) so that an
+// invalid paths.protected entry loudly denies writes rather than silently
+// disabling protection.
 func matchConfiguredProtectedPath(ctx hookproto.RuleContext, filePath string) (string, bool) {
 	if len(ctx.ProtectedPathDenyList) == 0 {
 		return "", false
@@ -53,11 +62,13 @@ func matchConfiguredProtectedPath(ctx hookproto.RuleContext, filePath string) (s
 		if target == prefix || strings.HasPrefix(target, prefix+"/") {
 			return raw, true
 		}
-		// Glob match against the full path or the basename.
-		if ok, _ := filepath.Match(entry, target); ok {
+		// Glob match against the full path or the basename. A malformed pattern
+		// yields filepath.ErrBadPattern; fail closed so an invalid declaration
+		// does not silently disable protection.
+		if ok, err := filepath.Match(entry, target); ok || err != nil {
 			return raw, true
 		}
-		if ok, _ := filepath.Match(entry, filepath.Base(target)); ok {
+		if ok, err := filepath.Match(entry, filepath.Base(target)); ok || err != nil {
 			return raw, true
 		}
 	}

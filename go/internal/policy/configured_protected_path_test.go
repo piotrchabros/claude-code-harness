@@ -39,6 +39,26 @@ func TestR16_DeniesExactFileDeclaration(t *testing.T) {
 	}
 }
 
+func TestR16_DeniesMultiEditUnderProtectedDir(t *testing.T) {
+	ctx := ctxWithDenyList("MultiEdit",
+		map[string]interface{}{"file_path": "/project/infra/main.tf"},
+		[]string{"infra/"})
+	if res := EvaluateRules(ctx); res.Decision != hookproto.DecisionDeny {
+		t.Fatalf("expected deny for MultiEdit under protected dir, got %s (%s)", res.Decision, res.Reason)
+	}
+}
+
+func TestR16_MalformedGlobFailsClosed(t *testing.T) {
+	// A malformed glob such as "[" must not silently disable protection: the
+	// invalid entry fails closed and denies the write.
+	ctx := ctxWithDenyList("Write",
+		map[string]interface{}{"file_path": "/project/config/app.yaml"},
+		[]string{"["})
+	if res := EvaluateRules(ctx); res.Decision != hookproto.DecisionDeny {
+		t.Fatalf("expected deny for malformed glob (fail closed), got %s (%s)", res.Decision, res.Reason)
+	}
+}
+
 func TestR16_DeclarationWithoutSlashMatchesSubtree(t *testing.T) {
 	ctx := ctxWithDenyList("Write",
 		map[string]interface{}{"file_path": "/project/generated/api.ts"},

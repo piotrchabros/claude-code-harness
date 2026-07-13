@@ -46,6 +46,17 @@ Change history for claude-code-harness.
   `tests/test-grok-adapter-candidate.sh` plus host-dist / model-routing /
   bootstrap / capability-matrix gates.
 
+### Fixed
+
+- **プロジェクト設定ガードレールのレビュー指摘対応 (PR #246)**:
+  - `paths.protected` の不正な glob（例 `[`）を `filepath.Match` のエラーとして
+    握り潰さず fail-closed（deny）扱いにし、保護が黙って無効化されるのを防止。
+  - `git push origin +main` のような `+`（force-push）付きショートハンド refspec が
+    R12 の保護ブランチ判定を回避していた問題を修正（先頭 `+` を除去してから照合）。
+  - `projectconfig` ローダーを `DisallowUnknownFields` + 末尾 EOF 検査に切替え、
+    `paths.protectedd` のような typo や余分な JSON を `ParseErr`（fail-closed）に。
+    schema/example が用いる `$schema` と各セクションの `comment` は許容。
+
 ## [5.0.0] - 2026-07-08
 
 ### テーマ: 0 ベース再設計線の本流化 + 事前確認フローの導入
