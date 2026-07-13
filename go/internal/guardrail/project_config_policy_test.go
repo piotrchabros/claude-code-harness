@@ -249,6 +249,43 @@ func TestEvaluatePreTool_SecretAllowStaysScopedToProject(t *testing.T) {
 	}
 }
 
+func TestEvaluatePreTool_SecretAllowRelativeEscapeDenied(t *testing.T) {
+	projectRoot := t.TempDir()
+	writeProjectConfig(t, projectRoot, ".claude-code-harness.config.json",
+		`{"runtimefloor": {"secretAllow": [".env"]}}`)
+
+	// A relative path escaping the project root must not be treated as the
+	// project's declared secret and must still require approval.
+	result := EvaluatePreTool(hookproto.HookInput{
+		CWD:       projectRoot,
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": "cat ../.env"},
+	})
+	if result.Decision != hookproto.DecisionDeny {
+		t.Fatalf("expected deny for project-escaping ../.env, got %s (%s)", result.Decision, result.Reason)
+	}
+}
+
+func TestEvaluatePreTool_AllowRmRfDoesNotPermitWorktreeEscape(t *testing.T) {
+	projectRoot := t.TempDir()
+	writeProjectConfig(t, projectRoot, ".claude-code-harness.config.json",
+		`{"destructive_commands": {"allow_rm_rf": true}}`)
+
+	// allow_rm_rf only relaxes the in-worktree confirmation; a deletion that
+	// escapes the worktree must still be denied by the runtime floor hard
+	// floor. (Relative ".." escapes resolve against the worktree root and are
+	// covered by the runtimefloor unit tests; here an absolute out-of-worktree
+	// path gives a deterministic escape regardless of the temp-dir location.)
+	result := EvaluatePreTool(hookproto.HookInput{
+		CWD:       projectRoot,
+		ToolName:  "Bash",
+		ToolInput: map[string]interface{}{"command": "rm -rf /etc/outside-worktree"},
+	})
+	if result.Decision != hookproto.DecisionDeny {
+		t.Fatalf("expected deny for worktree-escaping rm -rf even with allow_rm_rf, got %s (%s)", result.Decision, result.Reason)
+	}
+}
+
 func TestEvaluatePreTool_EnvReadDeniedWithoutSecretAllow(t *testing.T) {
 	projectRoot := t.TempDir()
 	result := EvaluatePreTool(hookproto.HookInput{

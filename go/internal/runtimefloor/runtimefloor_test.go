@@ -93,6 +93,21 @@ func TestCheckCommand_AllowsSafeCommands(t *testing.T) {
 	}
 }
 
+func TestCheckCommand_WorktreeEscape_RelativeDotDotResolvedAgainstRoot(t *testing.T) {
+	// A relative rm target must be resolved against the worktree root, not the
+	// process CWD, so that ".." escapes are caught. Excess ".." segments
+	// collapse at the filesystem root, giving a deterministic out-of-worktree
+	// (and out-of-temp-root) target regardless of where the temp dir lives.
+	root := testWorktreeRoot(t)
+	cmd := "rm -rf ../../../../../../../../opt/outside-worktree"
+
+	decision := CheckCommand(cmd, Context{WorktreeRoot: root})
+	if !decision.Stopped || decision.Category != CategoryWorktreeEscape {
+		t.Fatalf("expected worktree-escape stop for relative %q, got Stopped=%v category=%s",
+			cmd, decision.Stopped, decision.Category)
+	}
+}
+
 func TestCheckCommand_WorktreeEscape_AllowsInsideAbsolutePath(t *testing.T) {
 	root := testWorktreeRoot(t)
 	inside := root + "/build"
@@ -513,5 +528,17 @@ func TestCheckSecretRead_RelativeAllowlistStaysScopedToProject(t *testing.T) {
 	d := CheckCommand("cat "+filepath.Join(other, ".env"), Context{WorktreeRoot: root})
 	if !d.Stopped || d.Category != CategorySecretRead {
 		t.Fatalf("out-of-project .env must still deny, got Stopped=%v Category=%s", d.Stopped, d.Category)
+	}
+}
+
+func TestCheckSecretRead_RelativeAllowlistEscapingProjectRootDenied(t *testing.T) {
+	// A relative secretAllow declaration that escapes the project root via ".."
+	// must not be honored: reading the escaped path stays denied.
+	root := testWorktreeRoot(t)
+	writeRuntimeFloorConfig(t, root, `{"runtimefloor":{"secretAllow":["../.env"]}}`)
+
+	d := CheckCommand("cat ../.env", Context{WorktreeRoot: root})
+	if !d.Stopped || d.Category != CategorySecretRead {
+		t.Fatalf("relative allowlist escaping the project root must deny, got Stopped=%v Category=%s", d.Stopped, d.Category)
 	}
 }

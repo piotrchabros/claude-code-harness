@@ -64,7 +64,7 @@
     ],
     "plans_file": "Plans.md",
     "agents_file": "AGENTS.md",
-    "comment": "protected は R16 ガードレールで Write/Edit/MultiEdit を deny（宣言したパスのみ・緩和はしない）。このファイルを実際に読ませるには .claude-code-harness.config.json として保存する。"
+    "comment": "protected は R16 ガードレールで Write/Edit/MultiEdit を deny（宣言したパスのみ・緩和はしない）。このファイルを実際に読ませるには .claude-code-harness.config.json または claude-code-harness.config.json として保存する（どちらのファイル名も有効な配置先）。"
   },
 
   "ci": {

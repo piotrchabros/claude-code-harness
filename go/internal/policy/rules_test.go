@@ -1204,8 +1204,8 @@ func TestR05_AllowRmRfSuppressesAsk(t *testing.T) {
 	ctx := makeCtx("Bash", map[string]interface{}{"command": "rm -rf build/"})
 	ctx.AllowRmRf = true
 	result := EvaluateRules(ctx)
-	if result.Decision == hookproto.DecisionAsk {
-		t.Fatalf("expected allow_rm_rf to suppress the ask, got ask (%s)", result.Reason)
+	if result.Decision != hookproto.DecisionApprove {
+		t.Fatalf("expected allow_rm_rf to yield approve, got %s (%s)", result.Decision, result.Reason)
 	}
 }
 

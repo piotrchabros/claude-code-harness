@@ -356,7 +356,11 @@ func configSecretAllowPatterns(ctx Context) ([]string, bool, bool) {
 			out = append(out, abs)
 			continue
 		}
-		out = append(out, filepath.Join(rootAbs, filepath.Clean(p)))
+		resolved := filepath.Join(rootAbs, filepath.Clean(p))
+		if !pathUnderWorktree(resolved, rootAbs) {
+			continue
+		}
+		out = append(out, resolved)
 	}
 	return out, true, true
 }
@@ -498,7 +502,10 @@ func checkWorktreeEscape(cmd string, ctx Context) Decision {
 	for _, target := range targets {
 		expanded, ok := expandPathTarget(target)
 		if !ok {
-			continue
+			// A relative target (e.g. "../") must be resolved against the task
+			// worktree root, not the process CWD, so that ".." escapes are
+			// caught instead of being silently skipped.
+			expanded = filepath.Join(worktreeRoot, target)
 		}
 		abs, err := filepath.Abs(expanded)
 		if err != nil {
